@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.env.example
+.venv/
+env/
+venv/
+data/
+*.pdf
+credentials.json
+.pytest_cache/
