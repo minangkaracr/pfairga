@@ -35,7 +35,9 @@ def create_app() -> Application:
         or os.getenv("https_proxy")
         or "http://proxy.pythonanywhere.com:3128"
     )
-    app = Application.builder().token(token or "DUMMY_TOKEN_FOR_BUILD").proxy(proxy_url).build()
+    import httpx
+    client = httpx.AsyncClient(proxies={"https": proxy_url})
+    app = Application.builder().token(token or "DUMMY_TOKEN_FOR_BUILD").httpx_client(client).build()
 
     # Share dependencies via bot_data
     app.bot_data["storage"] = storage
