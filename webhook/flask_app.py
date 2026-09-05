@@ -8,8 +8,8 @@ from app.telegram.bot import build_application
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
 
-# Initialise PTB Application once (no async initialization here)
-ptb_app = build_application()
+# Global holder for the PTB Application – created lazily on first webhook call
+ptb_app = None
 
 # Simple health‑check endpoint – does not touch PTB
 @app.route('/health', methods=['GET'])
@@ -19,6 +19,15 @@ def health():
 @app.route('/webhook', methods=['POST'])
 def webhook():
     logger.info("Webhook request received")
+    global ptb_app
+    try:
+        # Initialise the PTB Application if it hasn't been created yet
+        if ptb_app is None:
+            ptb_app = build_application()
+    except Exception as e:
+        logger.exception("Failed to initialise Telegram application: %s", e)
+        abort(500)
+
     try:
         # Parse incoming Telegram update
         update_json = request.get_json(force=True)
