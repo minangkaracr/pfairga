@@ -101,4 +101,7 @@ def set_webhook():
         .proxy(os.getenv('HTTPS_PROXY'))
         .build()
     )
-    bot_app.bot.set_webhook(url=webhook_url)
+    import asyncio
+    async def _register():
+        await bot_app.bot.set_webhook(url=webhook_url)
+    asyncio.run(_register())
