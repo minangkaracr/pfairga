@@ -52,6 +52,8 @@ def build_application() -> Application:
         .proxy(proxy_url)
         .build()
     )
+    # Initialise the PTB runtime (required for manual process_update calls)
+    app.initialize()
 
     # Share dependencies via bot_data
     app.bot_data["storage"] = storage
