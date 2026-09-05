@@ -8,10 +8,13 @@ from app.telegram.bot import build_application
 app = Flask(__name__)
 logger = logging.getLogger(__name__)
 
-# Initialise PTB Application once
+# Initialise PTB Application once (no async initialization here)
 ptb_app = build_application()
-# Initialise the PTB Application (load handlers, start bot, etc.)
-asyncio.run(ptb_app.initialize())
+
+# Simple health‑check endpoint – does not touch PTB
+@app.route('/health', methods=['GET'])
+def health():
+    return "OK", 200
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
