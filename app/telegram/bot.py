@@ -46,15 +46,12 @@ def build_application() -> Application:
     proxy_url = os.getenv("HTTPS_PROXY")
     logger.info("Proxy URL yang dipakai: %s", proxy_url)
 
-    # Build the Telegram Application with proxy support (PTB v22 uses .proxy())
-    app = (
-        Application.builder()
-        .token(token or "DUMMY_TOKEN_FOR_BUILD")
-        .proxy(proxy_url)
-        .build()
-    )
-    # Initialise the PTB runtime (required for manual process_update calls)
-    asyncio.run(app.initialize())
+    # Build the Telegram Application with optional proxy support (PTB v22 uses .proxy())
+    builder = Application.builder().token(token or "DUMMY_TOKEN_FOR_BUILD")
+    if proxy_url:
+        builder = builder.proxy(proxy_url)
+    app = builder.build()
+    # Initialization will be performed once in the webhook entry point
 
 
     # Share dependencies via bot_data

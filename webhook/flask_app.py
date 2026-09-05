@@ -3,6 +3,10 @@ import logging
 from flask import Flask, request, abort
 from telegram import Update
 import asyncio
+# Create a single event loop that will live for the lifetime of the Flask process.
+# PTB's internal async client will keep references to this loop, so we must not close it
+_event_loop = asyncio.new_event_loop()
+asyncio.set_event_loop(_event_loop)
 from app.telegram.bot import build_application
 
 app = Flask(__name__)
@@ -25,15 +29,21 @@ def webhook():
         # Initialise the PTB Application if it hasn't been created yet
         if ptb_app is None:
             ptb_app = build_application()
-    except Exception as e:
-        logger.exception("Failed to initialise Telegram app: %s", e)
-        abort(500)
-
-    try:
-        update_json = request.get_json(force=True)
-        logger.debug("Received webhook update: %s", update_json)
-        update = Update.de_json(update_json, ptb_app.bot)
-        asyncio.run(ptb_app.process_update(update))
+        # Ensure the application is initialized (only once per process)
+        if not getattr(ptb_app, "initialized", False):
+            async def _init_and_process(update_json):
+                await ptb_app.initialize()
+                update = Update.de_json(update_json, ptb_app.bot)
+                await ptb_app.process_update(update)
+                return True
+            update_json = request.get_json(force=True)
+            logger.debug("Received webhook update: %s", update_json)
+            _event_loop.run_until_complete(_init_and_process(update_json))
+        else:
+            update_json = request.get_json(force=True)
+            logger.debug("Received webhook update: %s", update_json)
+            update = Update.de_json(update_json, ptb_app.bot)
+            _event_loop.run_until_complete(ptb_app.process_update(update))
     except Exception as e:
         logger.exception("Error processing webhook update: %s", e)
         abort(500)
