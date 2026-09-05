@@ -68,19 +68,30 @@ async def catat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage, engine, statement_gen, _ = get_helpers(context)
     
-    # Calculate for current month
+    # Calculate period: 25th of previous month to 24th of current month
     today = date.today()
-    start_date = today.replace(day=1).strftime("%Y-%m-%d")
-    end_date = today.strftime("%Y-%m-%d")
+    # End date is the 24th of the current month
+    end_date_obj = date(today.year, today.month, 24)
+    # Start date is the 25th of the previous month
+    if end_date_obj.month == 1:
+        start_year = end_date_obj.year - 1
+        start_month = 12
+    else:
+        start_year = end_date_obj.year
+        start_month = end_date_obj.month - 1
+    start_date_obj = date(start_year, start_month, 25)
+    start_date = start_date_obj.strftime("%Y-%m-%d")
+    end_date = end_date_obj.strftime("%Y-%m-%d")
 
     inc_stmt = statement_gen.generate_income_statement(start_date, end_date)
     bs = statement_gen.generate_balance_sheet()
 
-    month_name = today.strftime("%B %Y")
+    month_name = end_date_obj.strftime("%B %Y")  # Use ending month for label
     integrity_icon = "✅" if bs["is_balanced"] else "⚠️"
 
     msg = (
-        f"📊 <b>Ringkasan Keuangan — {month_name}</b>\n\n"
+        f"📊 <b>Ringkasan Keuangan — {month_name}</b>\n"
+        f"   (Periode {start_date_obj.strftime('%d %b %Y')} - {end_date_obj.strftime('%d %b %Y')})\n\n"
         f"💰 <b>Total Pemasukan:</b> Rp{inc_stmt['total_income']:,.0f}\n"
         f"💸 <b>Total Pengeluaran:</b> Rp{inc_stmt['total_expense']:,.0f}\n"
         f"📈 <b>Net Income:</b> Rp{inc_stmt['net_income']:,.0f}\n\n"
@@ -240,8 +251,18 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("⏳ Sedang menyiapkan Laporan Keuangan PDF...")
 
     today = date.today()
-    start_date = today.replace(day=1).strftime("%Y-%m-%d")
-    end_date = today.strftime("%Y-%m-%d")
+    # End date is 24th of current month
+    end_date_obj = date(today.year, today.month, 24)
+    # Start date is 25th of previous month
+    if end_date_obj.month == 1:
+        start_year = end_date_obj.year - 1
+        start_month = 12
+    else:
+        start_year = end_date_obj.year
+        start_month = end_date_obj.month - 1
+    start_date_obj = date(start_year, start_month, 25)
+    start_date = start_date_obj.strftime("%Y-%m-%d")
+    end_date = end_date_obj.strftime("%Y-%m-%d")
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
         pdf_path = tmp.name
@@ -251,8 +272,9 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(pdf_path, "rb") as f:
             await update.message.reply_document(
                 document=f,
-                filename=f"Financial_Report_{today.strftime('%Y_%m')}.pdf",
-                caption=f"📄 <b>Laporan Keuangan Periode {today.strftime('%B %Y')}</b>",
+                filename=f"Financial_Report_{end_date_obj.strftime('%Y_%m')}.pdf",
+                caption=f"📄 <b>Laporan Keuangan Periode {end_date_obj.strftime('%B %Y')}</b>\n"
+                        f"(Periode {start_date_obj.strftime('%d %b %Y')} - {end_date_obj.strftime('%d %b %Y')})",
                 parse_mode="HTML"
             )
     finally:
