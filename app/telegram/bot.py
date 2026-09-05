@@ -28,7 +28,9 @@ def create_app() -> Application:
     engine = AccountingEngine(storage)
     ai_parser = AIParserService(storage)
 
-    app = Application.builder().token(token or "DUMMY_TOKEN_FOR_BUILD").build()
+    # Configure proxy for PythonAnywhere outbound requests
+    proxy_url = os.getenv("HTTPS_PROXY") or os.getenv("https_proxy")
+    app = Application.builder().token(token or "DUMMY_TOKEN_FOR_BUILD").proxy_url(proxy_url).build()
 
     # Share dependencies via bot_data
     app.bot_data["storage"] = storage
