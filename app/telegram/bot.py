@@ -1,6 +1,8 @@
 import logging
 import asyncio
 import os
+from telegram.ext import ContextTypes
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from app import config
 from app.storage.base import BaseStorage
@@ -17,6 +19,19 @@ from app.telegram.commands import (
 from app.telegram.conversation import handle_natural_language_message
 
 logger = logging.getLogger(__name__)
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Global error handler for PTB.
+    Logs the exception and sends a friendly message to the user.
+    """
+    logger.exception("Unhandled exception in handler")
+    try:
+        if update and getattr(update, "effective_message", None):
+            await update.effective_message.reply_text(
+                "Maaf, terjadi gangguan jaringan atau internal. Silakan coba lagi nanti."
+            )
+    except Exception:
+        logger.exception("Failed to send error reply to user")
 
 def build_application() -> Application:
     """Builds and configures the Telegram Bot application instance.
@@ -53,6 +68,8 @@ def build_application() -> Application:
     app = builder.build()
     # Initialization will be performed once in the webhook entry point
 
+    # Add error handler
+    app.add_error_handler(error_handler)
 
     # Share dependencies via bot_data
     app.bot_data["storage"] = storage
