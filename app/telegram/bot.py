@@ -17,8 +17,10 @@ from app.telegram.conversation import handle_natural_language_message
 
 logger = logging.getLogger(__name__)
 
-def create_app() -> Application:
-    """Builds and configures the Telegram Bot application instance."""
+def build_application() -> Application:
+    """Builds and configures the Telegram Bot application instance.
+    This function returns a PTB Application without starting polling.
+    """
     token = config.TELEGRAM_BOT_TOKEN
     if not token:
         logger.warning("TELEGRAM_BOT_TOKEN is missing! Bot will not start until configured in .env.")
@@ -31,8 +33,12 @@ def create_app() -> Application:
 
     # Ensure proxy environment variables are set for free PythonAnywhere accounts
     # PythonAnywhere provides an HTTP proxy at http://proxy.server:3128 (or proxy.pythonanywhere.com)
-    os.environ.setdefault("HTTP_PROXY", os.getenv("HTTP_PROXY") or os.getenv("http_proxy") or "http://proxy.pythonanywhere.com:3128")
-    os.environ.setdefault("HTTPS_PROXY", os.getenv("HTTPS_PROXY") or os.getenv("https_proxy") or "http://proxy.pythonanywhere.com:3128")
+    os.environ.setdefault(
+        "HTTP_PROXY", os.getenv("HTTP_PROXY") or os.getenv("http_proxy") or "http://proxy.pythonanywhere.com:3128"
+    )
+    os.environ.setdefault(
+        "HTTPS_PROXY", os.getenv("HTTPS_PROXY") or os.getenv("https_proxy") or "http://proxy.pythonanywhere.com:3128"
+    )
 
     # Use the proxy URL from the environment (ApplicationBuilder will use it via .proxy())
     proxy_url = os.getenv("HTTPS_PROXY")
@@ -75,3 +81,24 @@ def create_app() -> Application:
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_natural_language_message))
 
     return app
+
+
+def set_webhook():
+    """Utility to register the Telegram webhook.
+    Call this once after the web app is deployed (or via a scheduled task).
+    """
+    from urllib.parse import urljoin
+    token = config.TELEGRAM_BOT_TOKEN
+    # Build base URL – PythonAnywhere provides HTTPS automatically
+    username = os.getenv('PYTHONANYWHERE_USERNAME') or os.getenv('USER')
+    base_url = f"https://{username}.pythonanywhere.com"
+    webhook_url = urljoin(base_url + '/', 'webhook')
+    logger.info("Setting Telegram webhook to %s", webhook_url)
+    # Use a temporary Application just to get the Bot instance
+    bot_app = (
+        Application.builder()
+        .token(token)
+        .proxy(os.getenv('HTTPS_PROXY'))
+        .build()
+    )
+    bot_app.bot.set_webhook(url=webhook_url)

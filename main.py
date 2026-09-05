@@ -5,7 +5,7 @@ import tempfile
 import fcntl
 
 from app import config
-from app.telegram.bot import create_app
+from app.telegram.bot import build_application, set_webhook
 
 
 logging.basicConfig(
@@ -72,13 +72,11 @@ def main():
         return
 
     try:
-        app = create_app()
-
-        logger.info(
-            "Bot started successfully! Waiting for messages..."
-        )
-
-        app.run_polling()
+        # Build the PTB Application (no polling needed for webhook mode)
+        build_application()
+        # Register the Telegram webhook (once per deployment)
+        set_webhook()
+        logger.info("Webhook registered. Bot is now ready to receive updates via Flask endpoint.")
 
     finally:
         # Lepaskan lock saat bot berhenti
