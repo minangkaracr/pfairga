@@ -103,7 +103,6 @@ def set_webhook():
     bot_app = (
         Application.builder()
         .token(token)
-        .proxy(os.getenv('HTTPS_PROXY'))
         .build()
     )
     import asyncio
