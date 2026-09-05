@@ -29,13 +29,15 @@ def create_app() -> Application:
     engine = AccountingEngine(storage)
     ai_parser = AIParserService(storage)
 
-    # Configure proxy for PythonAnywhere outbound requests (use HTTP scheme as required by the proxy)
-    proxy_url = (
-        os.getenv("HTTPS_PROXY")
-        or os.getenv("https_proxy")
-        or "http://proxy.pythonanywhere.com:3128"
-    )
+    # Ensure proxy environment variables are set for free PythonAnywhere accounts
+    # PythonAnywhere provides an HTTP proxy at http://proxy.server:3128 (or proxy.pythonanywhere.com)
+    os.environ.setdefault("HTTP_PROXY", os.getenv("HTTP_PROXY") or os.getenv("http_proxy") or "http://proxy.pythonanywhere.com:3128")
+    os.environ.setdefault("HTTPS_PROXY", os.getenv("HTTPS_PROXY") or os.getenv("https_proxy") or "http://proxy.pythonanywhere.com:3128")
+
+    # Use the proxy URL from the environment (ApplicationBuilder will use it via .proxy())
+    proxy_url = os.getenv("HTTPS_PROXY")
     logger.info("Proxy URL yang dipakai: %s", proxy_url)
+
     # Build the Telegram Application with proxy support (PTB v22 uses .proxy())
     app = (
         Application.builder()
