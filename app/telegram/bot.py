@@ -26,6 +26,7 @@ def build_application() -> Application:
         logger.warning("TELEGRAM_BOT_TOKEN is missing! Bot will not start until configured in .env.")
 
     # Always use Google Sheets as the single source of truth
+    logger.info("Using Google service account file: %s", config.GOOGLE_SERVICE_ACCOUNT_FILE)
     storage = SheetsStorage()
 
     engine = AccountingEngine(storage)
