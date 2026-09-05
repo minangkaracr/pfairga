@@ -8,6 +8,7 @@ from app.accounting.models import Transaction, TransactionType, TransactionStatu
 from app.accounting.engine import AccountingEngine
 from app.ai.parser import AIParserService
 from app.storage.base import BaseStorage
+from app.telegram.state import proxy_error_flag, failed_chats
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,21 @@ user_dialog_state = {}
 
 @restricted
 async def handle_natural_language_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # If a previous network error prevented a reply and connection is now restored, notify the user with error details
+    chat = getattr(update, "effective_chat", None)
+    if chat:
+        chat_id = chat.id
+        if proxy_error_flag and chat_id in failed_chats:
+            # Include the stored error message for transparency
+            error_msg = tg_state.last_error_message or "(tidak ada detail)"
+            await update.message.reply_text(
+                f"🔔 Koneksi ke server sudah pulih. Sebelumnya ada gangguan jaringan: {error_msg}."
+            )
+            failed_chats.remove(chat_id)
+            # Reset the shared flags
+            tg_state.proxy_error_flag = False
+            tg_state.last_error_message = ""
+
     user_text = update.message.text.strip()
     user_id = update.effective_user.id
 

@@ -7,6 +7,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from telegram.error import NetworkError
 from app import config
 from app.storage.base import BaseStorage
+import app.telegram.state as tg_state
 from app.sheets.sheets_storage import SheetsStorage
 from app.accounting.engine import AccountingEngine
 from app.ai.parser import AIParserService
@@ -21,15 +22,25 @@ from app.telegram.conversation import handle_natural_language_message
 
 logger = logging.getLogger(__name__)
 
+# Import shared state for tracking proxy failures (already imported at line 10)
+# Duplicate import removed
+
+# (flag moved to shared state module)
+
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Global error handler for PTB.
     Logs the exception and (optionally) notifies the user.
     """
     logger.exception("Unhandled exception in handler")
     # If the exception is a network error, avoid replying (proxy likely down)
-    from telegram.error import NetworkError
     if isinstance(context.error, NetworkError):
         logger.warning("NetworkError encountered – skipping user reply")
+        # Record that we had a network/proxy failure so we can notify later
+        tg_state.proxy_error_flag = True
+        tg_state.last_error_message = str(context.error)
+        # Store the chat id that failed so we can notify when back online
+        if update and getattr(update, "effective_chat", None):
+            tg_state.failed_chats.add(update.effective_chat.id)
         return
     # Otherwise try to notify the user; any failure is logged but ignored
     try:
@@ -37,6 +48,8 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await update.effective_message.reply_text(
                 "Maaf, terjadi gangguan jaringan atau internal. Silakan coba lagi nanti."
             )
+        # After a successful reply, clear the proxy error flag
+        tg_state.proxy_error_flag = False
     except Exception as exc:
         logger.exception("Failed to send error reply to user: %s", exc)
 
