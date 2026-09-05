@@ -4,6 +4,7 @@ import os
 from telegram.ext import ContextTypes
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.error import NetworkError
 from app import config
 from app.storage.base import BaseStorage
 from app.sheets.sheets_storage import SheetsStorage
@@ -22,16 +23,22 @@ logger = logging.getLogger(__name__)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Global error handler for PTB.
-    Logs the exception and sends a friendly message to the user.
+    Logs the exception and (optionally) notifies the user.
     """
     logger.exception("Unhandled exception in handler")
+    # If the exception is a network error, avoid replying (proxy likely down)
+    from telegram.error import NetworkError
+    if isinstance(context.error, NetworkError):
+        logger.warning("NetworkError encountered – skipping user reply")
+        return
+    # Otherwise try to notify the user; any failure is logged but ignored
     try:
         if update and getattr(update, "effective_message", None):
             await update.effective_message.reply_text(
                 "Maaf, terjadi gangguan jaringan atau internal. Silakan coba lagi nanti."
             )
-    except Exception:
-        logger.exception("Failed to send error reply to user")
+    except Exception as exc:
+        logger.exception("Failed to send error reply to user: %s", exc)
 
 def build_application() -> Application:
     """Builds and configures the Telegram Bot application instance.
