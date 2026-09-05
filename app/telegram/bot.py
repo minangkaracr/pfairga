@@ -1,4 +1,5 @@
 import logging
+import asyncio
 import os
 from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from app import config
@@ -53,7 +54,8 @@ def build_application() -> Application:
         .build()
     )
     # Initialise the PTB runtime (required for manual process_update calls)
-    app.initialize()
+    asyncio.run(app.initialize())
+
 
     # Share dependencies via bot_data
     app.bot_data["storage"] = storage

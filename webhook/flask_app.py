@@ -20,15 +20,14 @@ def health():
 @app.route("/webhook", methods=["POST"])
 def webhook():
     logger.info("Webhook request received")
-    global ptb_app          # <-- ONLY here we declare it global
-
-    # Initialise the PTB app lazily
-    if ptb_app is None:
-        try:
+    global ptb_app
+    try:
+        # Initialise the PTB Application if it hasn't been created yet
+        if ptb_app is None:
             ptb_app = build_application()
-        except Exception as e:
-            logger.exception("Failed to initialise Telegram app: %s", e)
-            abort(500)
+    except Exception as e:
+        logger.exception("Failed to initialise Telegram app: %s", e)
+        abort(500)
 
     try:
         update_json = request.get_json(force=True)
