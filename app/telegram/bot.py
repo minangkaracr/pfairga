@@ -35,6 +35,7 @@ def create_app() -> Application:
         or os.getenv("https_proxy")
         or "http://proxy.pythonanywhere.com:3128"
     )
+    logger.info("Proxy URL yang dipakai: %s", proxy_url)
     import httpx
     transport = httpx.AsyncHTTPTransport(proxy=proxy_url)
     client = httpx.AsyncClient(transport=transport)
