@@ -25,7 +25,9 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 # Storage Driver
 STORAGE_DRIVER = os.getenv("STORAGE_DRIVER", "sheets").lower()
 GOOGLE_SHEETS_SPREADSHEET_ID = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
-GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "credentials.json")
+# Resolve the service account file path relative to the project root (BASE_DIR)
+service_account_env = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE", "credentials.json")
+GOOGLE_SERVICE_ACCOUNT_FILE = str(BASE_DIR / service_account_env)
 
 # Application Settings
 DEFAULT_CURRENCY = os.getenv("DEFAULT_CURRENCY", "IDR")
