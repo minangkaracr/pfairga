@@ -154,19 +154,31 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def expense_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage, engine, statement_gen, _ = get_helpers(context)
     today = date.today()
-    start_date = today.replace(day=1).strftime("%Y-%m-%d")
-    end_date = today.strftime("%Y-%m-%d")
+    # End date is the 24th of the current month
+    end_date_obj = date(today.year, today.month, 24)
+    # Start date is the 25th of the previous month
+    if end_date_obj.month == 1:
+        start_year = end_date_obj.year - 1
+        start_month = 12
+    else:
+        start_year = end_date_obj.year
+        start_month = end_date_obj.month - 1
+    start_date_obj = date(start_year, start_month, 25)
+    start_date = start_date_obj.strftime("%Y-%m-%d")
+    end_date = end_date_obj.strftime("%Y-%m-%d")
 
     inc_stmt = statement_gen.generate_income_statement(start_date, end_date)
     expenses = inc_stmt["expense_by_category"]
 
-    msg = f"📉 <b>Rincian Pengeluaran — {today.strftime('%B %Y')}</b>\n\n"
+    month_name = end_date_obj.strftime("%B %Y")
+    msg = f"📉 <b>Rincian Pengeluaran — {month_name}</b>\n"
+    msg += f"   (Periode {start_date_obj.strftime('%d %b %Y')} - {end_date_obj.strftime('%d %b %Y')})\n\n"
     if not expenses:
         msg += "Belum ada pengeluaran yang dicatat bulan ini."
     else:
         for cat, amt in expenses.items():
             msg += f"• <b>{cat}:</b> Rp{amt:,.0f}\n"
-        msg += f"\n<b>Total Pengeluaran: Rp{inc_stmt['total_expense']:,.0f}</b>"
+        msg += f"\n<b>Total Pengeluaran:</b> Rp{inc_stmt['total_expense']:,.0f}"
 
     await update.message.reply_html(msg)
 
@@ -174,19 +186,31 @@ async def expense_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def income_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage, engine, statement_gen, _ = get_helpers(context)
     today = date.today()
-    start_date = today.replace(day=1).strftime("%Y-%m-%d")
-    end_date = today.strftime("%Y-%m-%d")
+    # End date is the 24th of the current month
+    end_date_obj = date(today.year, today.month, 24)
+    # Start date is the 25th of the previous month
+    if end_date_obj.month == 1:
+        start_year = end_date_obj.year - 1
+        start_month = 12
+    else:
+        start_year = end_date_obj.year
+        start_month = end_date_obj.month - 1
+    start_date_obj = date(start_year, start_month, 25)
+    start_date = start_date_obj.strftime("%Y-%m-%d")
+    end_date = end_date_obj.strftime("%Y-%m-%d")
 
     inc_stmt = statement_gen.generate_income_statement(start_date, end_date)
     incomes = inc_stmt["income_by_category"]
 
-    msg = f"📈 <b>Rincian Pemasukan — {today.strftime('%B %Y')}</b>\n\n"
+    month_name = end_date_obj.strftime("%B %Y")
+    msg = f"📈 <b>Rincian Pemasukan — {month_name}</b>\n"
+    msg += f"   (Periode {start_date_obj.strftime('%d %b %Y')} - {end_date_obj.strftime('%d %b %Y')})\n\n"
     if not incomes:
         msg += "Belum ada pemasukan yang dicatat bulan ini."
     else:
         for cat, amt in incomes.items():
             msg += f"• <b>{cat}:</b> Rp{amt:,.0f}\n"
-        msg += f"\n<b>Total Pemasukan: Rp{inc_stmt['total_income']:,.0f}</b>"
+        msg += f"\n<b>Total Pemasukan:</b> Rp{inc_stmt['total_income']:,.0f}"
 
     await update.message.reply_html(msg)
 
