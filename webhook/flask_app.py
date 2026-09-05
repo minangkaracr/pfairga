@@ -1,4 +1,5 @@
 import os
+import app.telegram.state as tg_state
 import logging
 from flask import Flask, request, abort
 from telegram import Update
@@ -46,6 +47,18 @@ def webhook():
             _event_loop.run_until_complete(ptb_app.process_update(update))
     except Exception as e:
         logger.exception("Error processing webhook update: %s", e)
+        # Capture network/proxy failures for later user notification
+        if isinstance(e, Exception) and ('ProxyError' in str(e) or 'NetworkError' in str(e)):
+            tg_state.proxy_error_flag = True
+            tg_state.last_error_message = str(e)
+            # Attempt to extract chat ID from the incoming update for later notification
+            try:
+                update_json = request.get_json(force=True)
+                chat_id = update_json.get('message', {}).get('chat', {}).get('id')
+                if chat_id:
+                    tg_state.failed_chats.add(chat_id)
+            except Exception:
+                pass
         abort(500)
 
     return "OK", 200

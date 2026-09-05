@@ -22,10 +22,10 @@ async def handle_natural_language_message(update: Update, context: ContextTypes.
     if chat:
         chat_id = chat.id
         if proxy_error_flag and chat_id in failed_chats:
-            # Include the stored error message for transparency
+            # Include the stored error message for transparency and note that the previous request was skipped
             error_msg = tg_state.last_error_message or "(tidak ada detail)"
             await update.message.reply_text(
-                f"🔔 Koneksi ke server sudah pulih. Sebelumnya ada gangguan jaringan: {error_msg}."
+                f"🔔 Koneksi ke server sudah pulih. Permintaan sebelumnya tidak dapat diproses karena NetworkError: {error_msg}."
             )
             failed_chats.remove(chat_id)
             # Reset the shared flags
