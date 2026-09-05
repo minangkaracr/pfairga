@@ -18,4 +18,4 @@ load_dotenv(PROJECT_ROOT / ".env")          # reads TELEGRAM_BOT_TOKEN, HTTPS_PR
 # -------------------------------------------------
 # 3️⃣ Expose the Flask “application” object for the web server
 # -------------------------------------------------
-from wsgi import application   # <-- our wsgi.py file that imports the Flask app
+from webhook.flask_app import app as application   # Flask app for webhook
