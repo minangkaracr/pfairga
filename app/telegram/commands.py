@@ -17,6 +17,31 @@ def get_helpers(context: ContextTypes.DEFAULT_TYPE):
     pdf_gen = PDFReportGenerator(storage)
     return storage, engine, statement_gen, pdf_gen
 
+def get_billing_period(ref_date: date | None = None) -> tuple[date, date]:
+    """
+    Menghitung periode billing/cut-off bulanan (siklus 25 s/d 24).
+    - Jika hari >= 25: siklus dimulai 25 bulan ini s/d 24 bulan berikutnya (misal 25 Sep - 24 Okt).
+    - Jika hari < 25: siklus dimulai 25 bulan lalu s/d 24 bulan ini (misal 25 Agu - 24 Sep).
+    """
+    if ref_date is None:
+        ref_date = date.today()
+
+    if ref_date.day >= 25:
+        start_date_obj = date(ref_date.year, ref_date.month, 25)
+        if ref_date.month == 12:
+            end_date_obj = date(ref_date.year + 1, 1, 24)
+        else:
+            end_date_obj = date(ref_date.year, ref_date.month + 1, 24)
+    else:
+        end_date_obj = date(ref_date.year, ref_date.month, 24)
+        if ref_date.month == 1:
+            start_date_obj = date(ref_date.year - 1, 12, 25)
+        else:
+            start_date_obj = date(ref_date.year, ref_date.month - 1, 25)
+
+    return start_date_obj, end_date_obj
+
+
 @restricted
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
@@ -68,18 +93,8 @@ async def catat_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage, engine, statement_gen, _ = get_helpers(context)
     
-    # Calculate period: 25th of previous month to 24th of current month
-    today = date.today()
-    # End date is the 24th of the current month
-    end_date_obj = date(today.year, today.month, 24)
-    # Start date is the 25th of the previous month
-    if end_date_obj.month == 1:
-        start_year = end_date_obj.year - 1
-        start_month = 12
-    else:
-        start_year = end_date_obj.year
-        start_month = end_date_obj.month - 1
-    start_date_obj = date(start_year, start_month, 25)
+    # Calculate period: 25th to 24th billing cycle
+    start_date_obj, end_date_obj = get_billing_period()
     start_date = start_date_obj.strftime("%Y-%m-%d")
     end_date = end_date_obj.strftime("%Y-%m-%d")
 
@@ -153,17 +168,7 @@ async def balance_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @restricted
 async def expense_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage, engine, statement_gen, _ = get_helpers(context)
-    today = date.today()
-    # End date is the 24th of the current month
-    end_date_obj = date(today.year, today.month, 24)
-    # Start date is the 25th of the previous month
-    if end_date_obj.month == 1:
-        start_year = end_date_obj.year - 1
-        start_month = 12
-    else:
-        start_year = end_date_obj.year
-        start_month = end_date_obj.month - 1
-    start_date_obj = date(start_year, start_month, 25)
+    start_date_obj, end_date_obj = get_billing_period()
     start_date = start_date_obj.strftime("%Y-%m-%d")
     end_date = end_date_obj.strftime("%Y-%m-%d")
 
@@ -185,17 +190,7 @@ async def expense_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 @restricted
 async def income_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage, engine, statement_gen, _ = get_helpers(context)
-    today = date.today()
-    # End date is the 24th of the current month
-    end_date_obj = date(today.year, today.month, 24)
-    # Start date is the 25th of the previous month
-    if end_date_obj.month == 1:
-        start_year = end_date_obj.year - 1
-        start_month = 12
-    else:
-        start_year = end_date_obj.year
-        start_month = end_date_obj.month - 1
-    start_date_obj = date(start_year, start_month, 25)
+    start_date_obj, end_date_obj = get_billing_period()
     start_date = start_date_obj.strftime("%Y-%m-%d")
     end_date = end_date_obj.strftime("%Y-%m-%d")
 
@@ -274,17 +269,7 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     storage, engine, statement_gen, pdf_gen = get_helpers(context)
     await update.message.reply_text("⏳ Sedang menyiapkan Laporan Keuangan PDF...")
 
-    today = date.today()
-    # End date is 24th of current month
-    end_date_obj = date(today.year, today.month, 24)
-    # Start date is 25th of previous month
-    if end_date_obj.month == 1:
-        start_year = end_date_obj.year - 1
-        start_month = 12
-    else:
-        start_year = end_date_obj.year
-        start_month = end_date_obj.month - 1
-    start_date_obj = date(start_year, start_month, 25)
+    start_date_obj, end_date_obj = get_billing_period()
     start_date = start_date_obj.strftime("%Y-%m-%d")
     end_date = end_date_obj.strftime("%Y-%m-%d")
 
