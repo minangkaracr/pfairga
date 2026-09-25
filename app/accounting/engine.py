@@ -94,17 +94,56 @@ class AccountingEngine:
             account_obj.current_balance -= tx.amount
             self.storage.save_account(account_obj)
 
+            # Resolve target CC account or liability if not explicitly provided
+            if not dest_account_obj and not tx.liability_id:
+                target_str = f"{tx.destination_account or ''} {tx.description or ''} {tx.category or ''}".lower()
+                all_accounts = self.storage.get_all_accounts()
+                cc_accounts = [a for a in all_accounts if a.account_type == AccountType.CREDIT_CARD and a.status == "Active"]
+                all_liabilities = [l for l in self.storage.get_all_liabilities() if l.status == "Active"]
+
+                # 1. Match CC account by name in target string
+                for cc_acc in cc_accounts:
+                    if cc_acc.account_name.lower() in target_str:
+                        dest_account_obj = cc_acc
+                        tx.destination_account = cc_acc.account_name
+                        break
+
+                # 2. If 'cc', 'kartu kredit', or 'cicilan' mentioned, find active CC account
+                if not dest_account_obj and any(w in target_str for w in ["cc", "kartu kredit", "credit card", "cicilan"]):
+                    # Prioritize CC account with balance > 0
+                    positive_ccs = [a for a in cc_accounts if a.current_balance > 0]
+                    if positive_ccs:
+                        dest_account_obj = positive_ccs[0]
+                        tx.destination_account = dest_account_obj.account_name
+                    elif cc_accounts:
+                        dest_account_obj = cc_accounts[0]
+                        tx.destination_account = dest_account_obj.account_name
+
+                # 3. Match from liabilities directly if still not found
+                if not dest_account_obj:
+                    for l in all_liabilities:
+                        if l.liability_name.lower() in target_str or (any(w in target_str for w in ["cc", "kartu kredit", "credit card"]) and "credit" in l.liability_type.lower()):
+                            tx.liability_id = l.liability_id
+                            break
+
             if dest_account_obj and dest_account_obj.account_type == AccountType.CREDIT_CARD:
                 liability = self._get_or_create_cc_liability(dest_account_obj)
                 liability.outstanding_balance = max(0.0, liability.outstanding_balance - tx.amount)
                 self.storage.save_liability(liability)
                 dest_account_obj.current_balance = max(0.0, dest_account_obj.current_balance - tx.amount)
                 self.storage.save_account(dest_account_obj)
+                tx.liability_id = liability.liability_id
+                tx.destination_account = dest_account_obj.account_name
             elif tx.liability_id:
                 liability = self.storage.get_liability(tx.liability_id)
                 if liability:
                     liability.outstanding_balance = max(0.0, liability.outstanding_balance - tx.amount)
                     self.storage.save_liability(liability)
+                    # Also reduce matching account balance if exists
+                    matched_acc = self.storage.get_account_by_name(liability.liability_name)
+                    if matched_acc and matched_acc.account_type == AccountType.CREDIT_CARD:
+                        matched_acc.current_balance = max(0.0, matched_acc.current_balance - tx.amount)
+                        self.storage.save_account(matched_acc)
 
         elif tx.type == TransactionType.ADJUSTMENT:
             account_obj.current_balance += tx.amount
@@ -162,6 +201,27 @@ class AccountingEngine:
             dest_account_obj.current_balance -= tx.amount
             self.storage.save_account(account_obj)
             self.storage.save_account(dest_account_obj)
+
+        elif tx.type == TransactionType.LIABILITY_PAYMENT and account_obj:
+            account_obj.current_balance += tx.amount
+            self.storage.save_account(account_obj)
+
+            if dest_account_obj and dest_account_obj.account_type == AccountType.CREDIT_CARD:
+                liability = self._get_or_create_cc_liability(dest_account_obj)
+                liability.outstanding_balance += tx.amount
+                self.storage.save_liability(liability)
+                dest_account_obj.current_balance += tx.amount
+                self.storage.save_account(dest_account_obj)
+            elif tx.liability_id:
+                liability = self.storage.get_liability(tx.liability_id)
+                if liability:
+                    liability.outstanding_balance += tx.amount
+                    self.storage.save_liability(liability)
+                    matched_acc = self.storage.get_account_by_name(liability.liability_name)
+                    if matched_acc and matched_acc.account_type == AccountType.CREDIT_CARD:
+                        matched_acc.current_balance += tx.amount
+                        self.storage.save_account(matched_acc)
+
 
         tx.status = TransactionStatus.VOIDED
         tx.updated_at = datetime.now().isoformat()

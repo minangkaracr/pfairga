@@ -148,3 +148,46 @@ def test_rename_account(temp_storage):
     assert temp_storage.get_account_by_name("Mandiri") is not None
     assert len(temp_storage.get_all_accounts()) == 7  # Total account count remains unchanged after rename
 
+def test_liability_payment_and_void(temp_storage):
+    """BR-008: Liability payment reduces source account balance and CC liability debt."""
+    engine = AccountingEngine(temp_storage)
+
+    # Setup CC account with 663,120 debt
+    cc_acc = temp_storage.get_account_by_name("BRI Credit Card")
+    cc_acc.current_balance = 663_120.0
+    temp_storage.save_account(cc_acc)
+
+    # Post liability payment
+    tx = Transaction(
+        transaction_id="TX-PAY-01",
+        transaction_date="2026-09-25",
+        recorded_at="2026-09-25",
+        type=TransactionType.LIABILITY_PAYMENT,
+        description="Bayar cicilan CC",
+        amount=221_040.0,
+        account="BRI",
+        destination_account="BRI Credit Card",
+        category="Credit Card Payment"
+    )
+    engine.post_transaction(tx)
+
+    # Check BRI decreased
+    bri = temp_storage.get_account_by_name("BRI")
+    assert bri.current_balance == 10_000_000.0 - 221_040.0
+
+    # Check CC account decreased
+    cc = temp_storage.get_account_by_name("BRI Credit Card")
+    assert cc.current_balance == 663_120.0 - 221_040.0
+
+    # Check liability record decreased
+    lia = temp_storage.get_liability(tx.liability_id)
+    assert lia is not None
+    assert lia.outstanding_balance == 663_120.0 - 221_040.0
+
+    # Test void restores balances
+    engine.void_transaction("TX-PAY-01", reason="Test void")
+    assert temp_storage.get_account_by_name("BRI").current_balance == 10_000_000.0
+    assert temp_storage.get_account_by_name("BRI Credit Card").current_balance == 663_120.0
+    assert temp_storage.get_liability(tx.liability_id).outstanding_balance == 663_120.0
+
+

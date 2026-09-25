@@ -71,13 +71,16 @@ Rules:
    - Top-up / transfer between accounts (e.g. GoPay from BRI) = "Transfer".
    - Salary / receive money = "Income".
    - Expensive durable goods (e.g. laptop, smartphone) = "Asset Acquisition".
-   - Paying credit card / loan = "Liability Payment".
+   - Paying credit card / loan / installment (e.g. "bayar cicilan CC", "bayar kartu kredit") = "Liability Payment".
    - Regular spending = "Expense".
 3. Extract amount in IDR numeric float (e.g. "35 ribu" -> 35000, "10 juta" -> 10000000).
 4. Resolve date (e.g., "kemarin" -> subtract 1 day from {current_date_str}).
-5. Identify source account and destination account (if transfer).
+5. Identify source account and destination account:
+   - For Transfer: source account is where money comes from, destination_account is where money goes.
+   - For Liability Payment: source account is where money is paid from (e.g. BRI, BCA), destination_account MUST be the Credit Card account or Liability being paid (e.g. "Kartu Kredit", "Credit Card", or the matching liability name from Existing Accounts). "CC" must match the existing Credit Card account from Existing Accounts.
 6. Match category from Existing Categories if one clearly fits. If none fits well, suggest a NEW specific and meaningful category name in English (e.g. "Health & Beauty", "Personal Care", "Groceries", "Subscriptions", "Pets"). NEVER default to "Food & Beverage" for non-food items. NEVER use "Other" as a category.
 7. If critical information (e.g. account) is missing and cannot be inferred, list missing fields in `missing_critical_fields` and provide a friendly Bahasa Indonesia `clarification_prompt`.
+
 
 Return JSON strictly matching this structure:
 {{
@@ -224,16 +227,18 @@ Return JSON strictly matching this structure:
             category = "Electronics"
             account = found_accounts[0] if found_accounts else "BRI"
 
-        elif "kartu kredit" in text or "bayar cc" in text or "bayar kartu kredit" in text:
-            if "bayar" in text:
+        elif any(w in text for w in ["kartu kredit", "cc", "credit card", "cicilan"]):
+            if any(w in text for w in ["bayar", "cicil", "pelunasan"]):
                 tx_type = TransactionType.LIABILITY_PAYMENT
                 category = "Credit Card Payment"
                 account = found_accounts[0] if found_accounts else "BRI"
-                dest_account = "BRI Credit Card"
+                cc_acc = next((a for a in existing_accounts if any(w in a.lower() for w in ["kartu kredit", "credit card", "cc"])), "Kartu Kredit")
+                dest_account = cc_acc
             else:
                 tx_type = TransactionType.EXPENSE
                 category = "Shopping"
-                account = "BRI Credit Card"
+                account = next((a for a in existing_accounts if any(w in a.lower() for w in ["kartu kredit", "credit card", "cc"])), "Kartu Kredit")
+
         else:
             tx_type = TransactionType.EXPENSE
             account = found_accounts[0] if found_accounts else None

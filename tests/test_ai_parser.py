@@ -36,3 +36,16 @@ def test_nlp_missing_account_trigger(temp_storage):
 
     assert "account" in res.missing_critical_fields
     assert res.clarification_prompt is not None
+
+def test_nlp_liability_payment_parsing(temp_storage):
+    service = AIParserService(temp_storage)
+    res = service.parse_user_message("bayar cicilan CC 221040 bayar bri", target_date="2026-09-25")
+
+    assert res.is_financial_transaction is True
+    assert len(res.items) == 1
+    item = res.items[0]
+    assert item.transaction_type == TransactionType.LIABILITY_PAYMENT
+    assert item.amount == 221040.0
+    assert item.account == "BRI"
+    assert "Credit Card" in item.destination_account or "Kartu Kredit" in item.destination_account
+

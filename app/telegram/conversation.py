@@ -191,6 +191,18 @@ def _format_success_message(tx: Transaction, engine: AccountingEngine, storage: 
             f"📅 Tanggal: {tx.transaction_date}\n\n"
             f"ℹ️ <i>Aset ini akan didepresiasi secara otomatis pada laporan neraca.</i>"
         )
+    elif tx.type == TransactionType.LIABILITY_PAYMENT:
+        dest_name = tx.destination_account or "Kartu Kredit / Kewajiban"
+        dest_obj = storage.get_account_by_name(dest_name) if tx.destination_account else None
+        dest_bal = f"\n💳 Sisa Tagihan {dest_name}: Rp{dest_obj.current_balance:,.0f}" if dest_obj else ""
+        return (
+            f"✅ <b>Pembayaran Hutang/Cicilan Berhasil Dicatat</b>\n\n"
+            f"💳 <b>{tx.account} → {dest_name}</b>\n"
+            f"💵 Rp{tx.amount:,.0f}\n"
+            f"📅 Tanggal: {tx.transaction_date}\n\n"
+            f"💳 Saldo {tx.account}: Rp{acc_bal:,.0f}"
+            f"{dest_bal}"
+        )
     else:
         return (
             f"✅ <b>Pengeluaran Berhasil Dicatat</b>\n\n"
@@ -200,3 +212,4 @@ def _format_success_message(tx: Transaction, engine: AccountingEngine, storage: 
             f"📅 Tanggal: {tx.transaction_date}\n\n"
             f"💳 Saldo {tx.account}: Rp{acc_bal:,.0f}"
         )
+
