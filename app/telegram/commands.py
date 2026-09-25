@@ -22,9 +22,15 @@ def get_billing_period(ref_date: date | None = None) -> tuple[date, date]:
     Menghitung periode billing/cut-off bulanan (siklus 25 s/d 24).
     - Jika hari >= 25: siklus dimulai 25 bulan ini s/d 24 bulan berikutnya (misal 25 Sep - 24 Okt).
     - Jika hari < 25: siklus dimulai 25 bulan lalu s/d 24 bulan ini (misal 25 Agu - 24 Sep).
+    Menggunakan timezone Asia/Jakarta (WIB) sebagai default tanggal hari ini.
     """
     if ref_date is None:
-        ref_date = date.today()
+        try:
+            from zoneinfo import ZoneInfo
+            ref_date = datetime.now(ZoneInfo("Asia/Jakarta")).date()
+        except Exception:
+            ref_date = date.today()
+
 
     if ref_date.day >= 25:
         start_date_obj = date(ref_date.year, ref_date.month, 25)
