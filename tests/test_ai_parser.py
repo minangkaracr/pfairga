@@ -49,3 +49,34 @@ def test_nlp_liability_payment_parsing(temp_storage):
     assert item.account == "BRI"
     assert "Credit Card" in item.destination_account or "Kartu Kredit" in item.destination_account
 
+def test_nlp_portfolio_setup_parsing(temp_storage):
+    service = AIParserService(temp_storage)
+    res = service.parse_user_message("aku punya akun di bibit portofolio saya bernilai 21 juta", target_date="2026-09-25")
+
+    assert res.intent == "setup_account"
+    assert len(res.items) == 1
+    item = res.items[0]
+    assert item.account == "Bibit"
+    assert item.amount == 21_000_000.0
+    assert item.account_type == "Investment"
+
+def test_nlp_bank_setup_parsing(temp_storage):
+    service = AIParserService(temp_storage)
+    res = service.parse_user_message("aku punya akun tabungan di jago senilai 15 juta", target_date="2026-09-25")
+
+    assert res.intent == "setup_account"
+    assert len(res.items) == 1
+    item = res.items[0]
+    assert item.account == "Jago"
+    assert item.amount == 15_000_000.0
+    assert item.account_type == "Bank"
+
+def test_nlp_gold_missing_amount_prompt(temp_storage):
+    service = AIParserService(temp_storage)
+    res = service.parse_user_message("aku punya emas 10 gram", target_date="2026-09-25")
+
+    assert res.intent == "setup_account"
+    assert "amount" in res.missing_critical_fields
+    assert res.clarification_prompt is not None
+
+

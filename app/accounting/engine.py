@@ -277,18 +277,21 @@ class AccountingEngine:
         self.storage.save_audit_log(audit)
         return posted_tx
 
-    def edit_account_balance(self, account_name: str, new_balance: float, reason: str = "Manual adjustment") -> Account:
+    def edit_account_balance(self, account_name: str, new_balance: float, reason: str = "Manual adjustment", preferred_type: AccountType | None = None) -> Account:
         """Modifies the current balance of an account (auto-creates if missing) and creates an audit log entry."""
         acc = self.storage.get_account_by_name(account_name)
         old_json = acc.model_dump_json() if acc else None
 
         if not acc:
-            acc = self._auto_create_account(account_name)
+            acc = self._auto_create_account(account_name, preferred_type=preferred_type)
             acc.opening_balance = new_balance
+        elif preferred_type:
+            acc.account_type = preferred_type
 
         acc.current_balance = new_balance
         acc.updated_at = datetime.now().isoformat()
         self.storage.save_account(acc)
+
 
         audit = AuditLog(
             audit_id=f"AUD-{uuid.uuid4().hex[:8].upper()}",
@@ -391,18 +394,31 @@ class AccountingEngine:
 
         return updated_assets
 
-    def _auto_create_account(self, account_name: str) -> Account:
+    def _auto_create_account(self, account_name: str, preferred_type: AccountType | None = None) -> Account:
         """Helper to create account if missing."""
-        acc_type = AccountType.CASH
-        lower = account_name.lower()
-        if any(w in lower for w in ["bca", "bri", "mandiri", "bni", "cimb", "bank"]):
-            acc_type = AccountType.BANK
-        elif any(w in lower for w in ["gopay", "ovo", "dana", "shopeepay", "linkaja"]):
-            acc_type = AccountType.EWALLET
-        elif any(w in lower for w in ["brizzi", "flazz", "e-money"]):
-            acc_type = AccountType.PREPAID
-        elif "cc" in lower or "credit card" in lower or "kartu kredit" in lower:
-            acc_type = AccountType.CREDIT_CARD
+        if preferred_type:
+            acc_type = preferred_type
+        else:
+            acc_type = AccountType.CASH
+            lower = account_name.lower()
+            if any(w in lower for w in [
+                "bibit", "bareksa", "ajaib", "pluang", "stockbit", "investasi", "investment",
+                "reksadana", "saham", "crypto", "binance", "tokocrypto", "indodax", "pintu",
+                "emas", "gold", "deposito", "portofolio", "portfolio"
+            ]):
+                acc_type = AccountType.INVESTMENT
+            elif any(w in lower for w in [
+                "bca", "bri", "mandiri", "bni", "cimb", "bank", "jago", "seabank",
+                "neo", "blu", "jenius", "permata", "danamon", "bsi", "tabungan", "simpedes", "britama"
+            ]):
+                acc_type = AccountType.BANK
+            elif any(w in lower for w in ["gopay", "ovo", "dana", "shopeepay", "shoppepay", "linkaja"]):
+                acc_type = AccountType.EWALLET
+            elif any(w in lower for w in ["brizzi", "flazz", "e-money"]):
+                acc_type = AccountType.PREPAID
+            elif "cc" in lower or "credit card" in lower or "kartu kredit" in lower:
+                acc_type = AccountType.CREDIT_CARD
+
 
         acc = Account(
             account_id=f"ACC-{uuid.uuid4().hex[:8].upper()}",

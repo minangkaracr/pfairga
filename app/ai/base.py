@@ -13,6 +13,8 @@ class ParsedItem(BaseModel):
     category: str = "Food & Beverage"
     transaction_date: str  # YYYY-MM-DD
     useful_life_years: Optional[float] = None  # If Asset Acquisition
+    account_type: Optional[str] = None  # e.g. Investment, Bank, E-Wallet, Cash
+
 
 class AIStructuredResult(BaseModel):
     is_financial_transaction: bool = True

@@ -4,8 +4,9 @@ from datetime import date
 from telegram import Update
 from telegram.ext import ContextTypes
 from app.security.auth import restricted
-from app.accounting.models import Transaction, TransactionType, TransactionStatus
+from app.accounting.models import Transaction, TransactionType, TransactionStatus, AccountType
 from app.accounting.engine import AccountingEngine
+
 from app.ai.parser import AIParserService
 from app.storage.base import BaseStorage
 from app.telegram.state import proxy_error_flag, failed_chats
@@ -98,40 +99,110 @@ async def handle_natural_language_message(update: Update, context: ContextTypes.
     # 2. Check if user is in an ongoing clarification dialog
     if user_id in user_dialog_state:
         state = user_dialog_state.pop(user_id)
-        pending_item = state["pending_item"]
-        missing_field = state["missing_field"]
+        pending_item = state.get("pending_item")
+        missing_field = state.get("missing_field")
+        dialog_intent = state.get("intent", "record_transaction")
 
-        if missing_field == "account":
-            pending_item.account = user_text
-        elif missing_field == "useful_life":
-            try:
-                pending_item.useful_life_years = float(user_text.replace("tahun", "").strip())
-            except ValueError:
-                pending_item.useful_life_years = 5.0
+        if dialog_intent == "setup_account":
+            # Extract amount from user response
+            import re
+            text = user_text.lower().strip()
+            amount = 0.0
+            juta_match = re.search(r"(\d+(?:[\.,]\d+)?)\s*(?:juta|jt|mian|m)", text)
+            ribu_match = re.search(r"(\d+(?:[\.,]\d+)?)\s*(?:ribu|rb|k)", text)
+            raw_num_match = re.search(r"(?:rp\.?\s*)?(\d{1,3}(?:\.\d{3})+|\d+)", text)
+            if juta_match:
+                amount = float(juta_match.group(1).replace(",", ".")) * 1_000_000
+            elif ribu_match:
+                amount = float(ribu_match.group(1).replace(",", ".")) * 1_000
+            elif raw_num_match:
+                amount = float(raw_num_match.group(1).replace(".", ""))
 
-        # Now post the transaction
-        tx = _post_parsed_item(engine, pending_item)
-        await update.message.reply_html(_format_success_message(tx, engine, storage))
-        return
+            if amount > 0:
+                acc_name = state.get("account_name", "Akun Baru")
+                pref_type = state.get("pref_type", AccountType.INVESTMENT)
+                acc = engine.edit_account_balance(acc_name, amount, reason="Natural language setup", preferred_type=pref_type)
+                type_label = acc.account_type.value if hasattr(acc.account_type, 'value') else str(acc.account_type)
+                await update.message.reply_html(
+                    f"⚙️ <b>Akun Berhasil Didaftarkan!</b>\n\n"
+                    f"🏦 <b>Nama Akun:</b> {acc.account_name}\n"
+                    f"📁 <b>Tipe Akun:</b> {type_label}\n"
+                    f"💰 <b>Saldo Terpasang:</b> Rp{acc.current_balance:,.0f}\n\n"
+                    f"✅ <i>Akun ini otomatis tercatat di Google Sheets & Laporan Neraca (Balance Sheet) pada kategori {type_label} & Total Aset.</i>"
+                )
+                return
+            else:
+                await update.message.reply_text("⚠️ Nominal belum valid. Silakan sebutkan nominal angka/rupiah (contoh: 15 juta atau 15000000).")
+                user_dialog_state[user_id] = state
+                return
 
-    # 2. Parse natural language message via AI Service
+        if pending_item:
+            if missing_field == "account":
+                pending_item.account = user_text
+            elif missing_field == "useful_life":
+                try:
+                    pending_item.useful_life_years = float(user_text.replace("tahun", "").strip())
+                except ValueError:
+                    pending_item.useful_life_years = 5.0
+
+            # Now post the transaction
+            tx = _post_parsed_item(engine, pending_item)
+            await update.message.reply_html(_format_success_message(tx, engine, storage))
+            return
+
+    # 3. Parse natural language message via AI Service
     today_str = date.today().strftime("%Y-%m-%d")
     result = ai_parser.parse_user_message(user_text, target_date=today_str)
 
-    if not result.is_financial_transaction or not result.items:
-        await update.message.reply_text("💡 Saya tidak menemukan instruksi transaksi keuangan pada pesan ini. Ketik /help untuk panduan.")
-        return
-
-    # 3. Check for missing critical fields (Confirmation / Clarification dialog BRD §28, §80)
+    # Check for missing critical fields (Confirmation / Clarification dialog BRD §28, §80)
     if result.missing_critical_fields:
         missing_field = result.missing_critical_fields[0]
-        pending_item = result.items[0]
+        pending_item = result.items[0] if result.items else None
+        account_name = pending_item.account if pending_item else "Akun"
+        pref_type = None
+        if pending_item and pending_item.account_type:
+            for t in AccountType:
+                if t.value.lower() == pending_item.account_type.lower():
+                    pref_type = t
+                    break
+
         user_dialog_state[user_id] = {
             "pending_item": pending_item,
-            "missing_field": missing_field
+            "missing_field": missing_field,
+            "intent": result.intent,
+            "account_name": account_name,
+            "pref_type": pref_type
         }
         prompt = result.clarification_prompt or f"Informasi {missing_field} belum lengkap. Mohon berikan rinciannya:"
         await update.message.reply_text(prompt)
+        return
+
+    # Check for setup_account intent (Natural Language Initial Portfolio / Balance Setup)
+    if result.intent == "setup_account" and result.items:
+        setup_msgs = []
+        for item in result.items:
+            acc_name = item.account or "Akun Baru"
+            pref_type = None
+            if item.account_type:
+                for t in AccountType:
+                    if t.value.lower() == item.account_type.lower():
+                        pref_type = t
+                        break
+
+            acc = engine.edit_account_balance(acc_name, item.amount, reason="Natural language setup", preferred_type=pref_type)
+            type_label = acc.account_type.value if hasattr(acc.account_type, 'value') else str(acc.account_type)
+            setup_msgs.append(
+                f"⚙️ <b>Akun Berhasil Didaftarkan!</b>\n\n"
+                f"🏦 <b>Nama Akun:</b> {acc.account_name}\n"
+                f"📁 <b>Tipe Akun:</b> {type_label}\n"
+                f"💰 <b>Saldo Terpasang:</b> Rp{acc.current_balance:,.0f}\n\n"
+                f"✅ <i>Akun ini otomatis tercatat di Google Sheets & Laporan Neraca (Balance Sheet) pada kategori {type_label} & Total Aset tanpa dianggap sebagai pemasukan/pengeluaran bulan ini.</i>"
+            )
+        await update.message.reply_html("\n\n".join(setup_msgs))
+        return
+
+    if not result.is_financial_transaction or not result.items:
+        await update.message.reply_text("💡 Saya tidak menemukan instruksi transaksi keuangan pada pesan ini. Ketik /help untuk panduan.")
         return
 
     # 4. Post parsed transactions
@@ -141,6 +212,7 @@ async def handle_natural_language_message(update: Update, context: ContextTypes.
         success_msgs.append(_format_success_message(tx, engine, storage))
 
     await update.message.reply_html("\n\n".join(success_msgs))
+
 
 def _post_parsed_item(engine: AccountingEngine, item) -> Transaction:
     tx_id = f"TX-{uuid.uuid4().hex[:8].upper()}"

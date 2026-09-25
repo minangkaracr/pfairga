@@ -66,21 +66,29 @@ Known Aliases: {json.dumps(existing_aliases)}
 User input: "{user_input}"
 
 Rules:
-1. Determine if input is a financial transaction.
-2. Classify transaction type strictly into: "Income", "Expense", "Transfer", "Asset Acquisition", "Liability", "Liability Payment".
-   - Top-up / transfer between accounts (e.g. GoPay from BRI) = "Transfer".
-   - Salary / receive money = "Income".
-   - Expensive durable goods (e.g. laptop, smartphone) = "Asset Acquisition".
-   - Paying credit card / loan / installment (e.g. "bayar cicilan CC", "bayar kartu kredit") = "Liability Payment".
-   - Regular spending = "Expense".
-3. Extract amount in IDR numeric float (e.g. "35 ribu" -> 35000, "10 juta" -> 10000000).
-4. Resolve date (e.g., "kemarin" -> subtract 1 day from {current_date_str}).
-5. Identify source account and destination account:
-   - For Transfer: source account is where money comes from, destination_account is where money goes.
-   - For Liability Payment: source account is where money is paid from (e.g. BRI, BCA), destination_account MUST be the Credit Card account or Liability being paid (e.g. "Kartu Kredit", "Credit Card", or the matching liability name from Existing Accounts). "CC" must match the existing Credit Card account from Existing Accounts.
+1. Determine intent:
+   - "record_transaction": for recording new transactions (spending, income, transfer, buying assets, paying debt).
+   - "setup_account": if user is stating an initial balance, registering an existing portfolio, savings account, or asset holding (e.g. "aku punya akun di bibit portofolio saya bernilai 21 juta", "aku punya akun tabungan di jago senilai 15 juta", "saldo awal bca 5 juta", "saya punya emas senilai 20 juta").
+2. For "setup_account":
+   - Set "intent" to "setup_account".
+   - Extract "account" name (e.g. "Bibit", "Jago", "Emas", "BCA").
+   - Extract "account_type": "Investment" (for Bibit/Bareksa/Ajaib/saham/reksadana/crypto/emas), "Bank" (for Jago/BCA/BRI/Mandiri/tabungan), "E-Wallet", or "Cash".
+   - Extract "amount" in IDR numeric float (e.g. 21000000). If amount in IDR is missing (e.g. "punya emas 10 gram" without rupiah value), add "amount" to missing_critical_fields and ask clarification: "Berapa perkiraan nilai rupiah untuk emas tersebut?".
+   - Set "description": e.g. "Portofolio Bibit", "Tabungan Jago", "Simpanan Emas".
+3. For "record_transaction":
+   - Classify transaction type strictly into: "Income", "Expense", "Transfer", "Asset Acquisition", "Liability", "Liability Payment".
+     - Top-up / transfer between accounts (e.g. GoPay from BRI) = "Transfer".
+     - Salary / receive money = "Income".
+     - Expensive durable goods (e.g. laptop, smartphone) = "Asset Acquisition".
+     - Paying credit card / loan / installment (e.g. "bayar cicilan CC", "bayar kartu kredit") = "Liability Payment".
+     - Regular spending = "Expense".
+   - Identify source account and destination account:
+     - For Transfer: source account is where money comes from, destination_account is where money goes.
+     - For Liability Payment: source account is where money is paid from (e.g. BRI, BCA), destination_account MUST be the Credit Card account or Liability being paid (e.g. "Kartu Kredit", "Credit Card", or the matching liability name from Existing Accounts). "CC" must match the existing Credit Card account from Existing Accounts.
+4. Extract amount in IDR numeric float (e.g. "35 ribu" -> 35000, "10 juta" -> 10000000, "21 juta" -> 21000000).
+5. Resolve date (e.g., "kemarin" -> subtract 1 day from {current_date_str}).
 6. Match category from Existing Categories if one clearly fits. If none fits well, suggest a NEW specific and meaningful category name in English (e.g. "Health & Beauty", "Personal Care", "Groceries", "Subscriptions", "Pets"). NEVER default to "Food & Beverage" for non-food items. NEVER use "Other" as a category.
-7. If critical information (e.g. account) is missing and cannot be inferred, list missing fields in `missing_critical_fields` and provide a friendly Bahasa Indonesia `clarification_prompt`.
-
+7. If critical information (e.g. account or amount) is missing and cannot be inferred, list missing fields in `missing_critical_fields` and provide a friendly Bahasa Indonesia `clarification_prompt`.
 
 Return JSON strictly matching this structure:
 {{
@@ -96,7 +104,8 @@ Return JSON strictly matching this structure:
       "destination_account": null,
       "category": "Food & Beverage",
       "transaction_date": "{current_date_str}",
-      "useful_life_years": null
+      "useful_life_years": null,
+      "account_type": null
     }}
   ],
   "missing_critical_fields": [],
@@ -104,6 +113,7 @@ Return JSON strictly matching this structure:
   "confidence_score": 0.95,
   "reasoning": "Clear expense transaction"
 }}
+
 """
         response = None
         for model_name in ["gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash-001"]:
@@ -142,15 +152,15 @@ Return JSON strictly matching this structure:
     ) -> AIStructuredResult:
         """Deterministic NLP Fallback for local testing without internet/API keys."""
         text = user_input.lower().strip()
+        # Check for setup / portfolio / initial balance intent
+        is_setup = (
+            text.startswith("setup") or text.startswith("set saldo") or text.startswith("saldo awal") or
 
-        if text.startswith("setup") or text.startswith("set saldo") or text.startswith("saldo awal"):
-            return AIStructuredResult(
-                is_financial_transaction=False,
-                intent="setup_account",
-                items=[],
-                confidence_score=1.0,
-                reasoning="Setup account command"
-            )
+            any(phrase in text for phrase in [
+                "punya akun", "punya tabungan", "portofolio", "portfolio",
+                "simpanan di", "punya emas", "aset emas"
+            ])
+        )
 
         # 1. Parse Date
         tx_date = current_date_str
@@ -158,11 +168,14 @@ Return JSON strictly matching this structure:
             dt = datetime.strptime(current_date_str, "%Y-%m-%d") - timedelta(days=1)
             tx_date = dt.strftime("%Y-%m-%d")
 
-        # 2. Parse Amount (e.g. 35 ribu, 35k, 10 juta, 500.000, 50000)
+        # 2. Parse Amount (e.g. 35 ribu, 35k, 10 juta, 21 juta, 500.000, 50000)
+        # Exclude non-currency units (e.g. 10 gram, 5 pcs, 2 tahun)
+        clean_amt_text = re.sub(r"\b\d+(?:[\.,]\d+)?\s*(?:gram|gr\b|g\b|pcs|lembar|buah|unit|thn|tahun)", "", text)
+
         amount = 0.0
-        juta_match = re.search(r"(\d+(?:[\.,]\d+)?)\s*(?:juta|jt|mian|m)", text)
-        ribu_match = re.search(r"(\d+(?:[\.,]\d+)?)\s*(?:ribu|rb|k)", text)
-        raw_num_match = re.search(r"(?:rp\.?\s*)?(\d{1,3}(?:\.\d{3})+|\d+)", text)
+        juta_match = re.search(r"(\d+(?:[\.,]\d+)?)\s*(?:juta|jt|mian|m)", clean_amt_text)
+        ribu_match = re.search(r"(\d+(?:[\.,]\d+)?)\s*(?:ribu|rb|k)", clean_amt_text)
+        raw_num_match = re.search(r"(?:rp\.?\s*)?(\d{1,3}(?:\.\d{3})+|\d+)", clean_amt_text)
 
         if juta_match:
             amount = float(juta_match.group(1).replace(",", ".")) * 1_000_000
@@ -171,6 +184,77 @@ Return JSON strictly matching this structure:
         elif raw_num_match:
             num_str = raw_num_match.group(1).replace(".", "")
             amount = float(num_str)
+
+
+        if is_setup:
+            # Determine account name & type
+            acc_name = "Akun Baru"
+            acc_type = "Cash"
+            if "bibit" in text:
+                acc_name = "Bibit"
+                acc_type = "Investment"
+            elif "bareksa" in text:
+                acc_name = "Bareksa"
+                acc_type = "Investment"
+            elif "ajaib" in text:
+                acc_name = "Ajaib"
+                acc_type = "Investment"
+            elif "emas" in text or "gold" in text:
+                acc_name = "Emas"
+                acc_type = "Investment"
+            elif "jago" in text:
+                acc_name = "Jago"
+                acc_type = "Bank"
+            elif "seabank" in text:
+                acc_name = "SeaBank"
+                acc_type = "Bank"
+            elif "bca" in text:
+                acc_name = "BCA"
+                acc_type = "Bank"
+            elif "bri" in text:
+                acc_name = "BRI"
+                acc_type = "Bank"
+            elif "mandiri" in text:
+                acc_name = "Mandiri"
+                acc_type = "Bank"
+            elif "gopay" in text:
+                acc_name = "GoPay"
+                acc_type = "E-Wallet"
+            elif "ovo" in text:
+                acc_name = "OVO"
+                acc_type = "E-Wallet"
+            elif "dana" in text:
+                acc_name = "DANA"
+                acc_type = "E-Wallet"
+
+            if amount <= 0:
+                return AIStructuredResult(
+                    is_financial_transaction=True,
+                    intent="setup_account",
+                    items=[],
+                    missing_critical_fields=["amount"],
+                    clarification_prompt=f"Berapa perkiraan nilai nominal (rupiah) untuk {acc_name} tersebut?",
+                    confidence_score=0.9,
+                    reasoning="Setup account missing amount"
+                )
+
+            item = ParsedItem(
+                transaction_type=TransactionType.ADJUSTMENT,
+                description=f"Setup {acc_name}",
+                amount=amount,
+                account=acc_name,
+                category="Initial Balance",
+                transaction_date=tx_date,
+                account_type=acc_type
+            )
+            return AIStructuredResult(
+                is_financial_transaction=True,
+                intent="setup_account",
+                items=[item],
+                confidence_score=0.98,
+                reasoning=f"Natural language setup for {acc_name}"
+            )
+
 
         # 3. Identify Accounts
         found_accounts = []
